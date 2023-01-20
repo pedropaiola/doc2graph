@@ -304,14 +304,19 @@ class GraphBuilder():
             pdfs = pdf_files(doc_path)
 
             #if cont >= 20: #Parando antes para testar mais rapidamente
-            #    break
+                #break
 
             for p in pdfs:
-                #cont += 1
-                
                 pdf_name = p.replace('.pdf', '')
-                with open(os.path.join(doc_path, pdf_name + '_data.json')) as file:
-                    data = json.load(file)
+                try:
+                    with open(os.path.join(doc_path, pdf_name + '_data.json')) as file:
+                        data = json.load(file)
+                except:
+                    continue
+
+                #cont += 1
+
+
                 images = sorted(images_files(doc_path, pdf_name))
                 for page in range(len(images)):
                     img = images[page]

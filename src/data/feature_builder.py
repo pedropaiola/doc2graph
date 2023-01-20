@@ -32,7 +32,7 @@ class FeatureBuilder():
         self.num_polar_bins = self.cfg_preprocessing.FEATURES.num_polar_bins
 
         if self.add_embs:
-            self.text_embedder = spacy.load('en_core_web_lg')
+            self.text_embedder = spacy.load('xx_ent_wiki_sm')
 
         if self.add_visual:
             self.visual_embedder = Unet(encoder_name="mobilenet_v2", encoder_weights=None, in_channels=1, classes=4)
