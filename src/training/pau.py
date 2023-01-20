@@ -28,7 +28,7 @@ def e2e(args):
     seed(cfg_train.seed)
     device = get_device(args.gpu)
     sm = SetModel(name=args.model, device=device)
-
+    print(device)
     if not args.test:
         ################* STEP 0: LOAD DATA ################
         data = Document2Graph(name='PAU TRAIN', src_path=PAU_TRAIN, device = device, output_dir=TRAIN_SAMPLES)

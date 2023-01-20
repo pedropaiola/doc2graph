@@ -80,7 +80,7 @@ class NodeClassifier(nn.Module):
                  activation,
                  dropout=0,
                  use_pp=False,
-                 device='cuda:0'):
+                 device='cpu'):
         super(NodeClassifier, self).__init__()
 
         self.projector = InputProjector(in_chunks, out_chunks, device)

@@ -4,6 +4,21 @@ import cv2
 import numpy as np
 import torch
 import math
+import os
+
+def pdf_files(dir_path):
+    pdfs = []
+    for f in os.listdir(dir_path):
+        if f.endswith('.pdf'):
+            pdfs.append(f)
+    return pdfs
+
+def images_files(dir_path, pdf_name):
+    images = []
+    for f in os.listdir(dir_path):
+        if f.endswith('.png') and f.startswith(pdf_name + '_page'):
+            images.append(f)
+    return images
 
 def polar(rect_src : list, rect_dst : list) -> Tuple[int, int]:
     """Compute distance and angle from src to dst bounding boxes (poolar coordinates considering the src as the center)

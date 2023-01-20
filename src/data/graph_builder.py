@@ -11,9 +11,9 @@ import xml.etree.ElementTree as ET
 
 from src.data.preprocessing import load_predictions
 from src.data.utils import polar
+from src.data.utils import pdf_files, images_files
 from src.paths import DATA, FUNSD_TEST
 from src.utils import get_config
-
 
 class GraphBuilder():
 
@@ -40,6 +40,8 @@ class GraphBuilder():
             return self.__fromFUNSD(src_path)
         elif src_data == 'PAU':
             return self.__fromPAU(src_path)
+        elif src_data == 'WEDUU':
+            return self.__fromWEDUU(src_path)
         elif src_data == 'CUSTOM':
             if self.data_type == 'img':
                 return self.__fromIMG()
@@ -278,6 +280,88 @@ class GraphBuilder():
             g = dgl.graph((torch.tensor(u), torch.tensor(v)), num_nodes=len(tokens_bbox), idtype=torch.int32)
             graphs.append(g)
         
+
+        return graphs, node_labels, edge_labels, features
+
+    def __fromWEDUU(self, src: str) -> Tuple[list, list, list, list]:
+        """ build graphs from Weduu dataset
+
+        Args:
+            src (str) : path to where data is stored
+        
+        Returns:
+            tuple (lists) : graphs, nodes and edge labels, features
+        """
+
+        graphs, node_labels, edge_labels = list(), list(), list()
+        features = {'paths': [], 'texts': [], 'boxs': []}
+        dirs = sorted(os.listdir(src))
+        
+        #cont = 0
+
+        for d in tqdm(dirs, desc='Creating graphs'):
+            doc_path = os.path.join(src, d)
+            pdfs = pdf_files(doc_path)
+
+            #if cont >= 20: #Parando antes para testar mais rapidamente
+            #    break
+
+            for p in pdfs:
+                #cont += 1
+                
+                pdf_name = p.replace('.pdf', '')
+                with open(os.path.join(doc_path, pdf_name + '_data.json')) as file:
+                    data = json.load(file)
+                images = sorted(images_files(doc_path, pdf_name))
+                for page in range(len(images)):
+                    img = images[page]
+                    
+                    img_path = os.path.join(doc_path, img)
+                    try:
+                        feats = data[page]
+                    except Exception as ex:
+                        print('Falha ao adicionar o seguinte dado:')
+                        print(' Chamado:', d)
+                        print(' PDF:', p)
+                        print(' Imagem:', img)
+                        continue
+
+                    features['paths'].append(img_path)
+
+                    boxs, texts, ids, nl = list(), list(), list(), list()
+
+                    id = 0
+                    for elem in feats:
+                        boxs.append([int(np.round(x)) for x in elem['box']])
+                        texts.append(elem['text'])
+                        nl.append(elem['label']) 
+                        ids.append(id)
+                        id += 1
+
+                    node_labels.append(nl)
+                    features['texts'].append(texts)
+                    features['boxs'].append(boxs)
+
+                    if self.edge_type == 'fully':
+                        u, v = self.fully_connected(range(len(boxs)))
+                    elif self.edge_type == 'knn': 
+                        u, v = self.__knn(Image.open(img_path).size, boxs)
+                    else:
+                        raise Exception('GraphBuilder exception: Other edge types still under development.')
+
+                    #NÃO TESTEI SE ESSA PARTE DAS ARESTAS FUNCIONA (antes estava colocando none pra tudo)
+                    el = list()
+                    for e in zip(u, v):
+                        if nl[e[0]] != 'none' or nl[e[1]] != 'none': 
+                            el.append('pair')
+                        else: 
+                            el.append('none')
+                    edge_labels.append(el)
+
+                    # creating graph
+                    g = dgl.graph((torch.tensor(u), torch.tensor(v)), num_nodes=len(boxs), idtype=torch.int32)
+                    graphs.append(g)
+          
         return graphs, node_labels, edge_labels, features
 
     def __fromFUNSD(self, src : str) -> Tuple[list, list, list, list]:

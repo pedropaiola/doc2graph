@@ -4,6 +4,8 @@ from src.data.download import get_data
 from src.training.funsd import train_funsd
 from src.utils import project_tree, set_preprocessing
 from src.training.pau import train_pau
+from src.training.weduu import train_weduu
+
 
 def main():
     parser = argparse.ArgumentParser(description='Training')
@@ -62,6 +64,8 @@ def main():
             train_funsd(args)
         elif args.src_data == 'PAU':
             train_pau(args)
+        elif args.src_data == 'WEDUU':
+            train_weduu(args)
         elif args.src_data == 'CUSTOM':
             #TODO develop custom data preprocessing
             raise Exception('Main exception: "CUSTOM" source data still under development')

@@ -28,3 +28,7 @@ FUNSD_TEST = DATA / 'FUNSD' / 'testing_data'
 # PAU
 PAU_TRAIN = DATA / 'PAU' / 'train'
 PAU_TEST = DATA / 'PAU' / 'test'
+
+# WEDUU
+WEDUU_TRAIN = DATA / 'WEDUU' / 'train'
+WEDUU_TEST = DATA / 'WEDUU' / 'test'
