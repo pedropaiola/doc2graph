@@ -33,7 +33,7 @@ def e2e(args):
         data = Document2Graph(name='WEDUU TRAIN', src_path=WEDUU_TRAIN, device = device, output_dir=TRAIN_SAMPLES)
         data.get_info()
 
-        ss = KFold(n_splits=10, shuffle=True, random_state=cfg_train.seed)
+        ss = KFold(n_splits=2, shuffle=True, random_state=cfg_train.seed)
         cv_indices = ss.split(data.graphs)
         
         models = []
@@ -210,6 +210,9 @@ def e2e(args):
         except:
             pass
         print("F1 Nodes: Macro {:.4f} - Micro {:.4f}".format(macro, micro))
+
+    for g, graph in enumerate(dgl.unbatch(test_graph)):
+        test_data.save_results(num=g, node_labels = None, labels_ids=None, name=f'test_{g}', bidirect=False)
 
     print(f"\n -> Loading best model {best_model}")
     model.load_state_dict(torch.load(CHECKPOINTS / best_model))
@@ -466,6 +469,7 @@ def entity_linking(args):
 
         accuracy, f1 = get_binary_accuracy_and_f1(preds, test_graph.edata['label'])
         _, classes_f1 = get_binary_accuracy_and_f1(preds, test_graph.edata['label'], per_class=True)
+
 
     if not args.test:
         feat_n, feat_e = get_features(args)

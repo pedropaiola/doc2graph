@@ -6,6 +6,9 @@ import os
 import numpy as np
 import dgl
 from PIL import Image, ImageDraw
+import cv2
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from src.data.feature_builder import FeatureBuilder
 from src.data.graph_builder import GraphBuilder
@@ -85,6 +88,8 @@ class Document2Graph(data.Dataset):
         """
         graphs, node_labels, edge_labels, features = self.GB.get_graph(self.src_path, self.src_data)
         self.feature_chunks, self.num_mods = self.FB.add_features(graphs, features)
+        self.bboxes = features['boxs']
+        self.texts = features['texts']
         return graphs, node_labels, edge_labels, features['paths']
     
     def label2class(self, label : str, node=True) -> int:
@@ -193,3 +198,60 @@ class Document2Graph(data.Dataset):
         graph_img.save(self.output_dir / f'{name}.png')
         return graph_img
         
+    def __draw_rectangle(self, image, bbox, color=(0,255,0), thickness=1):
+        top_left_detection = (bbox[0], bbox[1])
+        bottom_right_detection = (bbox[2], bbox[3])
+        return cv2.rectangle(image,top_left_detection,bottom_right_detection, color, thickness)
+
+    def __draw_line(self, image, start_point, end_point, color=(0,255,0), thickness=1):
+        start_point = (int(start_point[0]), int(start_point[1]))
+        end_point = (int(end_point[0]), int(end_point[1]))
+        return cv2.line(image, start_point, end_point, color, thickness=thickness) 
+
+    def save_results(self, num=None, node_labels=None, labels_ids=None, name='doc_graph', bidirect=True, regions=[], preds=None):
+        if num is None: num = randint(0, self.__len__()-1)
+        graph = self.graphs[num]
+        graph_path = self.paths[num]
+        graph_img = Image.open(graph_path).convert('RGB')
+        img = np.array(graph_img)
+        print('shape', img.shape)
+
+        if labels_ids is None: 
+            labels_ids = graph.edata['label'].nonzero().flatten().tolist()
+        center = lambda rect: ((rect[2]+rect[0])/2, (rect[3]+rect[1])/2)
+        #w, h = graph_img.size
+        #boxs = graph.ndata['geom'][:, :4].tolist()
+        #boxs = [[box[0]*w, box[1]*h, box[2]*w, box[3]*h] for box in boxs]
+        boxs = self.bboxes[num]
+
+        if node_labels is not None:
+            for b, box in enumerate(boxs):
+                label = self.node_unique_labels[node_labels[b]]
+                img = self.__draw_rectangle(img, box, color=self.COLORS[label])
+        else:
+            for box in boxs:
+                #print(box)
+                img = self.__draw_rectangle(img, box, color=(0,0,255))
+        
+        for region in regions:
+            color = self.COLORS[region[0]]
+            img = self.__draw_rectangle(region[1], box, color=color)
+        
+        if preds is not None:
+            img = self.__draw_rectangle(preds, box, color=(0,255,0))
+
+        
+        u,v = graph.edges()
+        for id in labels_ids:
+            sc = center(boxs[u[id]])
+            ec = center(boxs[v[id]])
+            img = self.__draw_line(img, sc, ec, color=(255, 0, 255))
+            '''
+            if bidirect:
+                graph_draw.ellipse([(sc[0]-4,sc[1]-4), (sc[0]+4,sc[1]+4)], fill = 'green', outline='black')
+                graph_draw.ellipse([(ec[0]-4,ec[1]-4), (ec[0]+4,ec[1]+4)], fill = 'red', outline='black')
+            '''
+
+        graph_img = Image.fromarray(img)
+        graph_img.save(self.output_dir / f'{name}.png')
+        return graph_img

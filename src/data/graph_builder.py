@@ -297,14 +297,14 @@ class GraphBuilder():
         features = {'paths': [], 'texts': [], 'boxs': []}
         dirs = sorted(os.listdir(src))
         
-        #cont = 0
+        cont = 0
 
         for d in tqdm(dirs, desc='Creating graphs'):
             doc_path = os.path.join(src, d)
             pdfs = pdf_files(doc_path)
 
-            #if cont >= 20: #Parando antes para testar mais rapidamente
-                #break
+            if cont >= 2: #Parando antes para testar mais rapidamente
+                break
 
             for p in pdfs:
                 pdf_name = p.replace('.pdf', '')
@@ -314,7 +314,7 @@ class GraphBuilder():
                 except:
                     continue
 
-                #cont += 1
+                cont += 1
 
 
                 images = sorted(images_files(doc_path, pdf_name))
@@ -337,9 +337,12 @@ class GraphBuilder():
 
                     id = 0
                     for elem in feats:
-                        boxs.append([int(np.round(x)) for x in elem['box']])
+                        boxs.append(elem['box'])
                         texts.append(elem['text'])
-                        nl.append(elem['label']) 
+                        if elem['label'] in ['cnpj', 'order_number', 'cd_sku_input', 'invoice_keyword', 'keyword']:
+                            nl.append(elem['label']) 
+                        else:
+                            nl.append('none') 
                         ids.append(id)
                         id += 1
 
