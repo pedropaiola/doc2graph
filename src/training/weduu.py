@@ -39,14 +39,14 @@ def e2e(args):
         models = []
         train_index, val_index = next(ss.split(data.graphs))
 
+        batch_size = 32
+
         for cvs in cv_indices:
 
             train_index, val_index = cvs
 
             # TRAIN
             train_graphs = [data.graphs[i] for i in train_index]
-            tg = dgl.batch(train_graphs)
-            tg = tg.int().to(device)
         
             val_graphs = [data.graphs[i] for i in val_index]
             vg = dgl.batch(val_graphs)
@@ -66,7 +66,7 @@ def e2e(args):
         
             ################* STEP 2: TRAINING ################
             print("\n### TRAINING ###")
-            print(f"-> Training samples: {tg.batch_size}")
+            print(f"-> Training samples: {len(train_graphs)}")
             print(f"-> Validation samples: {vg.batch_size}\n")
 
             # im_step = 0
@@ -74,19 +74,21 @@ def e2e(args):
 
                 #* TRAINING
                 model.train()
-                
-                n_scores, e_scores = model(tg, tg.ndata['feat'].to(device))
-                n_loss = compute_crossentropy_loss(n_scores.to(device), tg.ndata['label'].to(device), device=device)
-                e_loss = compute_crossentropy_loss(e_scores.to(device), tg.edata['label'].to(device), device=device)
-                tot_loss = n_loss + e_loss
-                macro, micro = get_f1(n_scores, tg.ndata['label'].to(device))
-                auc = compute_auc_mc(e_scores.to(device), tg.edata['label'].to(device))
+                for idx_batch in range(0, len(train_graphs), batch_size):
+                    tg = dgl.batch(train_graphs[idx_batch:idx_batch+batch_size])
+                    tg = tg.int().to(device)
+                    
+                    n_scores, e_scores = model(tg, tg.ndata['feat'].to(device))
+                    n_loss = compute_crossentropy_loss(n_scores.to(device), tg.ndata['label'].to(device), device=device)
+                    e_loss = compute_crossentropy_loss(e_scores.to(device), tg.edata['label'].to(device), device=device)
+                    tot_loss = n_loss + e_loss
+                    macro, micro = get_f1(n_scores, tg.ndata['label'].to(device))
+                    auc = compute_auc_mc(e_scores.to(device), tg.edata['label'].to(device))
 
-
-                optimizer.zero_grad()
-                tot_loss.backward()
-                n = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
-                optimizer.step()
+                    optimizer.zero_grad()
+                    tot_loss.backward()
+                    n = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+                    optimizer.step()
 
                 #* VALIDATION
                 model.eval()
@@ -211,9 +213,6 @@ def e2e(args):
             pass
         print("F1 Nodes: Macro {:.4f} - Micro {:.4f}".format(macro, micro))
 
-    for g, graph in enumerate(dgl.unbatch(test_graph)):
-        test_data.save_results(num=g, node_labels = None, labels_ids=None, name=f'test_{g}', bidirect=False)
-
     print(f"\n -> Loading best model {best_model}")
     model.load_state_dict(torch.load(CHECKPOINTS / best_model))
     model.eval()
@@ -227,6 +226,10 @@ def e2e(args):
         test_graph.edata['preds'] = epreds
         test_graph.ndata['preds'] = npreds
         test_graph.ndata['net'] = n
+
+        for g, graph in enumerate(dgl.unbatch(test_graph)):
+            test_data.save_results(num=g, node_labels = graph.ndata['preds'].tolist(), labels_ids=None, name=f'test_{g}', bidirect=False)
+            test_data.save_results(num=g, node_labels = graph.ndata['label'].tolist(), labels_ids=None, name=f'test_{g}', bidirect=False, gt=True)
 
         accuracy, f1 = get_binary_accuracy_and_f1(epreds, test_graph.edata['label'])
         _, classes_f1 = get_binary_accuracy_and_f1(epreds, test_graph.edata['label'], per_class=True)
