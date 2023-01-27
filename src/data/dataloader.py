@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import json
 
 from src.data.feature_builder import FeatureBuilder
 from src.data.graph_builder import GraphBuilder
@@ -39,8 +40,12 @@ class Document2Graph(data.Dataset):
         self.output_dir = output_dir
 
         # TODO: DO A DIFFERENT FILE
-        self.COLORS = {'invoice_info': (150, 75, 0), 'receiver':(0,100,0), 'other':(128, 128, 128), 'supplier': (255, 0, 255), 'positions':(255,140,0), 'total':(0, 255, 255)}
-
+        if name.startswith('WEDUU'):
+            #cd_sku_input: light blue,      cnpj: green,        invoice_keyword: orange,    keyword: brown,     none: gray,     order_number: pink
+            self.COLORS = {'cd_sku_input': (0, 255, 255), 'cnpj':(0,100,0), 'invoice_keyword':(255,140,0), 'keyword': (150, 75, 0), 'none':(128, 128, 128), 'order_number':(255, 0, 255)}
+        else:
+            self.COLORS = {'invoice_info': (150, 75, 0), 'receiver':(0,100,0), 'other':(128, 128, 128), 'supplier': (255, 0, 255), 'positions':(255,140,0), 'total':(0, 255, 255)}
+        #
         # get graphs
         self.graphs, self.node_labels, self.edge_labels, self.paths = self.__docs2graphs()
         
@@ -208,13 +213,13 @@ class Document2Graph(data.Dataset):
         end_point = (int(end_point[0]), int(end_point[1]))
         return cv2.line(image, start_point, end_point, color, thickness=thickness) 
 
-    def save_results(self, num=None, node_labels=None, labels_ids=None, name='doc_graph', bidirect=True, regions=[], preds=None):
+    def save_results(self, num=None, node_labels=None, labels_ids=None, name='doc_graph', bidirect=True, regions=[], preds=None, edges=True, gt=False):
         if num is None: num = randint(0, self.__len__()-1)
         graph = self.graphs[num]
         graph_path = self.paths[num]
+
         graph_img = Image.open(graph_path).convert('RGB')
         img = np.array(graph_img)
-        print('shape', img.shape)
 
         if labels_ids is None: 
             labels_ids = graph.edata['label'].nonzero().flatten().tolist()
@@ -240,18 +245,39 @@ class Document2Graph(data.Dataset):
         if preds is not None:
             img = self.__draw_rectangle(preds, box, color=(0,255,0))
 
-        
-        u,v = graph.edges()
-        for id in labels_ids:
-            sc = center(boxs[u[id]])
-            ec = center(boxs[v[id]])
-            img = self.__draw_line(img, sc, ec, color=(255, 0, 255))
-            '''
-            if bidirect:
-                graph_draw.ellipse([(sc[0]-4,sc[1]-4), (sc[0]+4,sc[1]+4)], fill = 'green', outline='black')
-                graph_draw.ellipse([(ec[0]-4,ec[1]-4), (ec[0]+4,ec[1]+4)], fill = 'red', outline='black')
-            '''
+        if edges:
+            u,v = graph.edges()
+            for id in labels_ids:
+                sc = center(boxs[u[id]])
+                ec = center(boxs[v[id]])
+                img = self.__draw_line(img, sc, ec, color=(100, 100, 100))
+                '''
+                if bidirect:
+                    graph_draw.ellipse([(sc[0]-4,sc[1]-4), (sc[0]+4,sc[1]+4)], fill = 'green', outline='black')
+                    graph_draw.ellipse([(ec[0]-4,ec[1]-4), (ec[0]+4,ec[1]+4)], fill = 'red', outline='black')
+                '''
 
         graph_img = Image.fromarray(img)
-        graph_img.save(self.output_dir / f'{name}.png')
+        save_img_path = graph_path.split('/')[-1]
+        if gt:
+            save_img_path  = save_img_path.replace('.png', '_gt.png')
+        #graph_img.save(self.output_dir / f'{name}.png')
+        graph_img.save(self.output_dir / save_img_path)
+
+
+        if not gt and node_labels is not None:
+            data_path = graph_path[:-12] + 'data.json'
+            with open(data_path) as file:
+                data = json.load(file)
+            page = int(graph_path[-8:-4])
+
+            new_data = data[page-1]
+            for j in range(len(new_data)):
+                new_data[j]['label_pred'] = self.node_unique_labels[node_labels[j]]
+
+            save_path = graph_path.split('/')[-1]
+            save_path = save_path.replace('.png', '_out.json')
+            with open(self.output_dir / save_path, 'w', encoding='utf-8') as outfile:
+                json.dump(new_data, outfile, indent=4, ensure_ascii=False)     
+
         return graph_img
