@@ -12,12 +12,16 @@ from statistics import mean
 import numpy as np
 from PIL import Image
 
+import itertools
+
 from src.data.dataloader import Document2Graph
 from src.paths import *
 from src.models.graphs import SetModel
 from src.utils import get_config
 from src.training.utils import *
 from src.data.graph_builder import GraphBuilder
+
+from tqdm import tqdm
 
 def e2e(args):
 
@@ -32,14 +36,15 @@ def e2e(args):
         ################* STEP 0: LOAD DATA ################
         data = Document2Graph(name='WEDUU TRAIN', src_path=WEDUU_TRAIN, device = device, output_dir=TRAIN_SAMPLES)
         data.get_info()
+        unique_labels = [l for l in range(len(data.get_labels()))]
 
-        ss = KFold(n_splits=2, shuffle=True, random_state=cfg_train.seed)
+        ss = KFold(n_splits=10, shuffle=True, random_state=cfg_train.seed)
         cv_indices = ss.split(data.graphs)
         
         models = []
         train_index, val_index = next(ss.split(data.graphs))
 
-        batch_size = 32
+        batch_size = 128
 
         for cvs in cv_indices:
 
@@ -47,8 +52,10 @@ def e2e(args):
 
             # TRAIN
             train_graphs = [data.graphs[i] for i in train_index]
+            train_labels = [[data.label2class(x) for x in data.node_labels[i]] for i in train_index]
         
             val_graphs = [data.graphs[i] for i in val_index]
+            val_labels = [[data.label2class(x) for x in data.node_labels[i]] for i in val_index]
             vg = dgl.batch(val_graphs)
             vg = vg.int().to(device)
             
@@ -74,27 +81,36 @@ def e2e(args):
 
                 #* TRAINING
                 model.train()
-                for idx_batch in range(0, len(train_graphs), batch_size):
+                iter = 0
+                epoch_loss = 0
+                for idx_batch in tqdm(range(0, len(train_graphs), batch_size), desc='Batchs'):
+                    iter += 1
                     tg = dgl.batch(train_graphs[idx_batch:idx_batch+batch_size])
                     tg = tg.int().to(device)
-                    
+                    labels_nodes  = list(itertools.chain.from_iterable(train_labels[idx_batch:idx_batch+batch_size]))
+                    labels_nodes = torch.from_numpy(np.array(labels_nodes , dtype=np.int_))
+                    labels_edges = tg.edata['label'].clone()
+
                     n_scores, e_scores = model(tg, tg.ndata['feat'].to(device))
-                    n_loss = compute_crossentropy_loss(n_scores.to(device), tg.ndata['label'].to(device), device=device)
-                    e_loss = compute_crossentropy_loss(e_scores.to(device), tg.edata['label'].to(device), device=device)
+                    n_loss = compute_crossentropy_loss(n_scores.to(device), labels_nodes.to(device), device=device)
+                    e_loss = compute_crossentropy_loss(e_scores.to(device), labels_edges.to(device), device=device)
                     tot_loss = n_loss + e_loss
-                    macro, micro = get_f1(n_scores, tg.ndata['label'].to(device))
-                    auc = compute_auc_mc(e_scores.to(device), tg.edata['label'].to(device))
+                    macro, micro = get_f1(n_scores, labels_nodes.to(device))
+                    auc = compute_auc_mc(e_scores.to(device), labels_edges.to(device))
 
                     optimizer.zero_grad()
                     tot_loss.backward()
                     n = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
                     optimizer.step()
 
+                    epoch_loss += tot_loss.detach().item()
+                epoch_loss /= iter
+
                 #* VALIDATION
                 model.eval()
                 with torch.no_grad():
                     val_n_scores, val_e_scores = model(vg, vg.ndata['feat'].to(device))
-                    val_n_loss = compute_crossentropy_loss(val_n_scores.to(device), vg.ndata['label'].to(device), device=device)
+                    val_n_loss = compute_crossentropy_loss(val_n_scores.to(device), vg.ndata['label'].to(device), device=device, classes=unique_labels)
                     val_e_loss = compute_crossentropy_loss(val_e_scores.to(device), vg.edata['label'].to(device), device=device)
                     val_tot_loss = val_n_loss + val_e_loss
                     val_macro, _ = get_f1(val_n_scores, vg.ndata['label'].to(device))
@@ -106,7 +122,7 @@ def e2e(args):
                 #* PRINTING IMAGEs AND RESULTS
 
                 print("Epoch {:05d} | TrainLoss {:.4f} | TrainF1-MACRO {:.4f} | TrainAUC-PR {:.4f} | ValLoss {:.4f} | ValF1-MACRO {:.4f} | ValAUC-PR {:.4f} |"
-                .format(epoch, tot_loss.item(), macro, auc, val_tot_loss.item(), val_macro, val_auc))
+                .format(epoch, epoch_loss, macro, auc, val_tot_loss.item(), val_macro, val_auc))
                 
                 if cfg_train.stopper_metric == 'loss':
                     step_value = val_tot_loss.item()

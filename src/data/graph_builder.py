@@ -303,8 +303,8 @@ class GraphBuilder():
             doc_path = os.path.join(src, d)
             pdfs = pdf_files(doc_path)
 
-            if cont >= 25: #Parando antes para testar mais rapidamente
-                break
+            #if cont >= 5: #Parando antes para testar mais rapidamente
+            #    break
 
             for p in pdfs:
                 pdf_name = p.replace('.pdf', '')

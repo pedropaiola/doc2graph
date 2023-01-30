@@ -54,6 +54,7 @@ class Document2Graph(data.Dataset):
         if self.node_labels:
             self.node_unique_labels = np.unique(np.array([l for nl in self.node_labels for l in nl]))
             self.node_num_classes = len(self.node_unique_labels)
+            self.node_label2class = dict(zip(self.node_unique_labels, [x for x in range(self.node_num_classes)]))
             self.node_num_features = self.graphs[0].ndata['feat'].shape[1]
         
             for idx, labels in enumerate(self.node_labels):
@@ -108,7 +109,7 @@ class Document2Graph(data.Dataset):
             int: class number
         """
         if node:
-            return self.node_unique_labels[label]
+            return self.node_label2class[label]
         else:
             return self.edge_unique_labels[label]
     
@@ -123,6 +124,9 @@ class Document2Graph(data.Dataset):
         self.FB.get_info()
         print(f"-> graph example: {self.graphs[num_graph]}")
         return
+    
+    def get_labels(self):
+        return self.node_unique_labels 
     
     def balance(self, cls = 'none', indices = None) -> None:
         """ Calls balance_edges() of GraphBuilder.
