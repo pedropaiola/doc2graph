@@ -8,7 +8,7 @@ from src.paths import CFGM
 from src.utils import get_config
 
 class SetModel():
-    def __init__(self, name='e2e', device = 'cpu'):
+    def __init__(self, name='e2e', device = 'cuda:0'):
         """ Create a SetModel object, that handles dinamically different version of Doc2Graph Model. Default "end-to-end" (e2e)
 
         Args:
@@ -177,7 +177,6 @@ class E2E(nn.Module):
         self.node_pred = nn.Sequential(*node_pred)
 
     def forward(self, g, h):
-
         h = self.projector(h)
         # for l in range(self.m_layers):
         #     h = self.message_passing[l](g, h)
@@ -275,6 +274,7 @@ class InputProjector(nn.Module):
         
         self.modalities = nn.Sequential(*modules)
         self.chunks.insert(0, 0)
+        self.dim_out = None
     
     def get_out_lenght(self):
         return self.output_length
@@ -292,8 +292,17 @@ class InputProjector(nn.Module):
             start = self.chunks[num] + sum(self.chunks[:num])
             end = start + self.chunks[num+1]
             input = h[:, start:end].to(self.device)
-            mid.append(module(input))
+            r = module(input)
 
+            ##Gambiarra brabaaa pra resolver problema com GPU (mas verificar como resolver de forma correta)
+            if self.dim_out is None and len(r.shape) > 1:
+                self.dim_out = r.shape
+            elif len(r.shape) == 1:
+                r = torch.zeros(self.dim_out[0], self.dim_out[1]).to(self.device)
+            
+            #print(name, r)
+            #print(start, end, input.shape, module)
+            mid.append(r)
         return torch.cat(mid, dim=1)
 
 class MLPPredictor(nn.Module):

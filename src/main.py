@@ -39,6 +39,8 @@ def main():
                         help="number of bins into which discretize the space for edge polar features. It must be a power of 2: Default 8.")
 
     # training
+    parser.add_argument("--batch-size", type=int, default=100,
+                        help="Batch size: Default 100")
     parser.add_argument("--model", type=str, default='e2e',
                         help="which model to use, which yaml file to load: e2e, edge or gcn")
     parser.add_argument("--gpu", type=int, default=-1,

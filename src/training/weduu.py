@@ -44,7 +44,7 @@ def e2e(args):
         models = []
         train_index, val_index = next(ss.split(data.graphs))
 
-        batch_size = 128
+        batch_size = args.batch_size
 
         for cvs in cv_indices:
 
@@ -90,7 +90,7 @@ def e2e(args):
                     labels_nodes  = list(itertools.chain.from_iterable(train_labels[idx_batch:idx_batch+batch_size]))
                     labels_nodes = torch.from_numpy(np.array(labels_nodes , dtype=np.int_))
                     labels_edges = tg.edata['label'].clone()
-
+                    print(tg.ndata['feat'].to(device).shape)
                     n_scores, e_scores = model(tg, tg.ndata['feat'].to(device))
                     n_loss = compute_crossentropy_loss(n_scores.to(device), labels_nodes.to(device), device=device)
                     e_loss = compute_crossentropy_loss(e_scores.to(device), labels_edges.to(device), device=device)
