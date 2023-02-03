@@ -298,7 +298,7 @@ class InputProjector(nn.Module):
             if self.dim_out is None and len(r.shape) > 1:
                 self.dim_out = r.shape
             elif len(r.shape) == 1:
-                r = torch.zeros(self.dim_out[0], self.dim_out[1]).to(self.device)
+                r = torch.zeros(input.shape[0], self.dim_out[1]).to(self.device)
             
             #print(name, r)
             #print(start, end, input.shape, module)
