@@ -31,6 +31,7 @@ def e2e(args):
     seed(cfg_train.seed)
     device = get_device(args.gpu)
     sm = SetModel(name=args.model, device=device)
+    batch_size = args.batch_size
 
     if not args.test:
         ################* STEP 0: LOAD DATA ################
@@ -44,7 +45,6 @@ def e2e(args):
         models = []
         train_index, val_index = next(ss.split(data.graphs))
 
-        batch_size = args.batch_size
 
         for cvs in cv_indices:
 
@@ -90,7 +90,6 @@ def e2e(args):
                     labels_nodes  = list(itertools.chain.from_iterable(train_labels[idx_batch:idx_batch+batch_size]))
                     labels_nodes = torch.from_numpy(np.array(labels_nodes , dtype=np.int_))
                     labels_edges = tg.edata['label'].clone()
-                    print(tg.ndata['feat'].to(device).shape)
                     n_scores, e_scores = model(tg, tg.ndata['feat'].to(device))
                     n_loss = compute_crossentropy_loss(n_scores.to(device), labels_nodes.to(device), device=device)
                     e_loss = compute_crossentropy_loss(e_scores.to(device), labels_edges.to(device), device=device)
@@ -192,25 +191,38 @@ def e2e(args):
     best_model = ''
     nodes_micro = []
     edges_f1 = []
-    test_graph = dgl.batch(test_data.graphs).to(device)
-
+    test_graph_aux = dgl.batch(test_data.graphs).to(device)
+    test_graphs = test_data.graphs
     for m in models:
         model.load_state_dict(torch.load(CHECKPOINTS / m))
         model.eval()
         with torch.no_grad():
+            preds = None
+            n_tot = None
+            for idx_batch in tqdm(range(0, len(test_graphs), batch_size), desc='Batchs'):
+                tg = dgl.batch(test_graphs[idx_batch:idx_batch+batch_size])
+                tg = tg.int().to(device)
+                n, e = model(tg, tg.ndata['feat'].to(device))
+                if n_tot is None:
+                    n_tot = n.clone()
+                else:
+                    n_tot = torch.cat((n_tot, n))
+                auc = compute_auc_mc(e.to(device), tg.edata['label'].to(device))
+                if preds is None:
+                    _, preds = torch.max(F.softmax(e, dim=1), dim=1)
+                else:
+                    _, preds_aux = torch.max(F.softmax(e, dim=1), dim=1)
+                    preds = torch.cat((preds, preds_aux))
 
-            n, e = model(test_graph, test_graph.ndata['feat'].to(device))
-            auc = compute_auc_mc(e.to(device), test_graph.edata['label'].to(device))
-            _, preds = torch.max(F.softmax(e, dim=1), dim=1)
 
-            accuracy, f1 = get_binary_accuracy_and_f1(preds, test_graph.edata['label'])
-            _, classes_f1 = get_binary_accuracy_and_f1(preds, test_graph.edata['label'], per_class=True)
+            accuracy, f1 = get_binary_accuracy_and_f1(preds, test_graph_aux.edata['label'])
+            _, classes_f1 = get_binary_accuracy_and_f1(preds, test_graph_aux.edata['label'], per_class=True)
             try:
                 edges_f1.append(classes_f1[1])
             except:
                 edges_f1.append(classes_f1[0])
 
-            macro, micro = get_f1(n, test_graph.ndata['label'].to(device))
+            macro, micro = get_f1(n_tot, test_graph_aux.ndata['label'].to(device))
             nodes_micro.append(micro)
             try:
                 if classes_f1[1] >= max(edges_f1):
@@ -219,7 +231,7 @@ def e2e(args):
                 if classes_f1[0] >= max(edges_f1):
                     best_model = m
 
-            test_graph.edata['preds'] = preds
+            test_graph_aux.edata['preds'] = preds
 
         ################* STEP 4: RESULTS ################
         print("\n### RESULTS {} ###".format(m))
@@ -233,23 +245,40 @@ def e2e(args):
     model.load_state_dict(torch.load(CHECKPOINTS / best_model))
     model.eval()
     with torch.no_grad():
+        epreds = None
+        npreds = None
+        n_tot = None
 
-        n, e= model(test_graph, test_graph.ndata['feat'].to(device))
-        auc = compute_auc_mc(e.to(device), test_graph.edata['label'].to(device))
+        for idx_batch in tqdm(range(0, len(test_graphs), batch_size), desc='Batchs'):
+            tg = dgl.batch(test_graphs[idx_batch:idx_batch+batch_size])
+            tg = tg.int().to(device)
+            n, e= model(tg, tg.ndata['feat'].to(device))
+            if n_tot is None:
+                n_tot = n.clone()
+            else:
+                n_tot = torch.cat((n_tot, n))
+            auc = compute_auc_mc(e.to(device), tg.edata['label'].to(device))
+            
+            if epreds is None:
+                _, epreds = torch.max(F.softmax(e, dim=1), dim=1)
+                _, npreds = torch.max(F.softmax(n, dim=1), dim=1)
+            else:
+                _, epreds_aux = torch.max(F.softmax(e, dim=1), dim=1)
+                _, npreds_aux = torch.max(F.softmax(n, dim=1), dim=1)
+                epreds = torch.cat((epreds, epreds_aux))
+                npreds = torch.cat((npreds, npreds_aux))
         
-        _, epreds = torch.max(F.softmax(e, dim=1), dim=1)
-        _, npreds = torch.max(F.softmax(n, dim=1), dim=1)
-        test_graph.edata['preds'] = epreds
-        test_graph.ndata['preds'] = npreds
-        test_graph.ndata['net'] = n
+        test_graph_aux.edata['preds'] = epreds
+        test_graph_aux.ndata['preds'] = npreds
+        test_graph_aux.ndata['net'] = n_tot
 
-        for g, graph in enumerate(dgl.unbatch(test_graph)):
+        for g, graph in enumerate(dgl.unbatch(test_graph_aux)):
             test_data.save_results(num=g, node_labels = graph.ndata['preds'].tolist(), labels_ids=None, name=f'test_{g}', bidirect=False)
             test_data.save_results(num=g, node_labels = graph.ndata['label'].tolist(), labels_ids=None, name=f'test_{g}', bidirect=False, gt=True)
 
-        accuracy, f1 = get_binary_accuracy_and_f1(epreds, test_graph.edata['label'])
-        _, classes_f1 = get_binary_accuracy_and_f1(epreds, test_graph.edata['label'], per_class=True)
-        macro, micro = get_f1(n, test_graph.ndata['label'].to(device))
+        accuracy, f1 = get_binary_accuracy_and_f1(epreds, test_graph_aux.edata['label'])
+        _, classes_f1 = get_binary_accuracy_and_f1(epreds, test_graph_aux.edata['label'], per_class=True)
+        macro, micro = get_f1(n_tot, test_graph_aux.ndata['label'].to(device))
 
     # ################* STEP 4: RESULTS ################
     print("\n### BEST RESULTS ###")

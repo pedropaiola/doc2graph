@@ -331,15 +331,22 @@ class GraphBuilder():
                         print(' Imagem:', img)
                         continue
 
+                    labels_page = set({})
+                    for elem in feats:
+                        labels_page.add(elem['label'])
+                        
+                    if not('order_number' in labels_page or 'cnpj' in labels_page):
+                        continue
+
                     features['paths'].append(img_path)
 
                     boxs, texts, ids, nl = list(), list(), list(), list()
-
+                    
                     id = 0
                     for elem in feats:
                         boxs.append(elem['box'])
                         texts.append(elem['text'])
-                        if elem['label'] in ['cnpj', 'order_number', 'cd_sku_input', 'invoice_keyword', 'keyword']:
+                        if elem['label'] in ['cnpj', 'order_number', 'ds_sku_input', 'invoice_keyword', 'keyword']:
                             nl.append(elem['label']) 
                         else:
                             nl.append('none') 
